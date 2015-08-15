@@ -5,6 +5,7 @@
   "main": "lib/index.js",
   "scripts": {
     "prepublish": "babel src --out-dir lib",
+    "watch": "babel src --out-dir lib --watch",
     "test": "mocha --compilers js:babel/register"
   },
   "author": "Matt Smith <mtscout6@gmail.com>",

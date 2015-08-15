@@ -7,17 +7,23 @@ function ExtractAssets(modules, requestShortener, publicPath) {
   var emitted = false;
   var assets = modules
     .map(m => {
-      var assets = Object.keys(m.assets || {});
+      var assets = m.assets || {};
 
       if (assets.length === 0) {
         return undefined;
       }
 
       var asset = assets[0];
-      emitted = emitted || m.assets[asset].emitted;
+
+      var name = '';
+      if(m && m.reasons && m.reasons[0] && m.reasons[0].userRequest) {
+        name = m.reasons[0].userRequest;
+      } else {
+        name = asset;
+      }
 
       return {
-        name: m.readableIdentifier(requestShortener),
+        name: name,
         asset: asset
       };
     }).filter(m => {
@@ -27,7 +33,7 @@ function ExtractAssets(modules, requestShortener, publicPath) {
       return acc;
     }, {});
 
-  return [emitted, assets];
+  return [true, assets];
 }
 
 function ExtractChunks(chunks, publicPath) {
@@ -35,7 +41,7 @@ function ExtractChunks(chunks, publicPath) {
   var chunks = chunks
     .map(c => {
       return {
-        name: c.name,
+        name: c.names[0],
         files: c.files
           .filter(f => path.extname(f) !== '.map')
           .map(f => url.resolve(publicPath, f))
@@ -62,16 +68,30 @@ export default class AssetMapPlugin {
   }
 
   apply(compiler) {
-    compiler.plugin('done', stats => {
-      var publicPath = stats.compilation.outputOptions.publicPath;
+    compiler.plugin("emit", (curCompiler, callback) => {
+      var stats = curCompiler.getStats().toJson();
+
+      var publicPath = stats.publicPath;
       var requestShortener = new RequestShortener(this.relativeTo || path.dirname(this.outputFile));
 
-      var [assetsEmitted, assets] = ExtractAssets(stats.compilation.modules, requestShortener, publicPath);
-      var [chunksEmitted, chunks] = ExtractChunks(stats.compilation.chunks, publicPath);
+      var [assetsEmitted, assets] = ExtractAssets(stats.modules, requestShortener, publicPath);
+      var [chunksEmitted, chunks] = ExtractChunks(stats.chunks, publicPath);
 
       if (assetsEmitted || chunksEmitted) {
-        fs.writeFileSync(this.outputFile, JSON.stringify({ assets, chunks }, null, 2));
+        var statsJson = JSON.stringify({ assets, chunks }, null, 2);
+
+        curCompiler.assets[this.outputFile] = {
+          source: function () {
+            return statsJson;
+          },
+          size: function () {
+            return statsJson.length;
+          }
+        };
       }
+
+      callback();
     });
+
   }
 }
